@@ -2,124 +2,290 @@ import fs from 'fs';
 import path from 'path';
 import xlsx from 'xlsx';
 
-const inputDir = './input_json';
-const outputDir = './Output_json';
-const compareDir = './comparision';
+// =====================================================
+// 📂 PATHS
+// =====================================================
+const inputPath = './input_json/SB_output.json';
+const outputPath = './Output_json/xSB_output.json';
+const reportPath = './comparison/final_report.xlsx';
 
-/**
- * Flattens a deeply nested JSON object into a single layer with dot-notation paths.
- * Useful for comparing structures of varying depths.
- */
-function flattenObject(ob) {
-    let toReturn = {};
-    for (let i in ob) {
-        if (!ob.hasOwnProperty(i)) continue;
-        if ((typeof ob[i]) === 'object' && ob[i] !== null) {
-            let flatObject = flattenObject(ob[i]);
-            for (let x in flatObject) {
-                if (!flatObject.hasOwnProperty(x)) continue;
-                toReturn[i + '.' + x] = flatObject[x];
-            }
-        } else {
-            toReturn[i] = ob[i];
-        }
+// =====================================================
+// 🔑 MAPPINGS
+// =====================================================
+
+// GENERAL Mapping
+const generalMapping = {
+    Exporter_Name: 'impExpName',
+    Branch_Name_Sr_No: 'branchSrNo',
+    AD_Code: 'authorizedDealerCode',
+    Exporter_Type: 'typeOfExporter',
+    Mode_Of_Transport: 'modeOfTransport',
+    Custom_House: 'portOfLoading',
+    Port_of_Discharge: 'portOfDischarge',
+    Country_of_Discharge: 'countryOfDischarge',
+    Port_of_Destination: 'destinationPort',
+    Country_of_Destination: 'countryOfDestination',
+    SB_Type: 'sbType',
+    Consignee_Name: 'consigneeName',
+    Consignee_Address: 'consigneeAddress1',
+    Consignee_Country: 'consigneeCountry',
+    Consignee_Buyer_Same: 'consigneeBuyerSame',
+    Consignor_Manufacturer_Same_for_All_Items: 'consignorManufacturerSameForAllItems',
+    NFEI: 'nfeiCategory',
+    Warehouse_Code: 'warehouseCode',
+    SEZ_Unit_Code: 'sezUnitCode',
+    Drawback_Beneficiary: 'drawbackBeneficiary',
+    Nature_of_Cargo: 'natureOfCargo',
+    Seal_Type: 'sealType',
+    Gross_Weight: 'grossWeight',
+    Type: 'type',
+    Net_Weight: 'netWeight',
+    RBI_Waiver_No: 'rbiWaiverNumber',
+    RBI_Waiver_Date: 'rbiWaiverDate',
+    EPZ_Code: 'epzCode',
+    No_of_Packages: 'totalNoOfPackages',
+    Pkg_Unit: 'unitOfMeasurement',
+    Loose_Packages: 'loosePackages',
+    Rotation_No: 'rotationNo',
+    Rotation_Date: 'rotationDate',
+    Is_Factory_Stuffed: 'isFactoryStuffed',
+    Is_Sample_Accompanied: 'isSampleAccompanied',
+    'Marks_&_Numbers': 'marksAndNumbers',
+    EOU_Company_Name: 'eouCompanyName',
+    EOU_IEC_Number: 'eouIecNumber',
+    EOU_Company_Address: 'eouCompanyAddress',
+    Examiner: 'examiner',
+    Examiner_Designation: 'examinerDesignation',
+    Examination_Date: 'examinationDate',
+    Supervisor: 'supervisor',
+    Supervisor_Designation: 'supervisorDesignation',
+    Seal_No: 'sealNo',
+    Commissionerate: 'commissionerate',
+    Division: 'division',
+    Range: 'range',
+    Is_Verified_by_Examining_Officer: 'isVerifiedByExaminingOfficer',
+    Sample_Forward: 'sampleForward'
+};
+
+// ORDERS Mapping
+const orderMapping = {
+    Inv_Sr_No: 'invoiceSerialNumber',
+    Invoice_Number: 'invoiceNumber',
+    Date: 'invoiceDate',
+    TOI: 'termsOfInvoice',
+    Currency: 'currency'
+};
+
+// ITEMS Mapping
+const itemMapping = {
+    Inv_Sr_No: 'invoiceSerialNumber',
+    Item_Sr_No: 'itemSerialNumberInvoice',
+    Qty: 'quantity',
+    Unit_Price: 'unitPrice',
+    Per: 'per',
+    HSN_Code: 'hsCode',
+    Unit: 'hsnUnit'
+};
+
+// =====================================================
+// 🔥 NORMALIZE VALUE
+// =====================================================
+const normalize = (v) => {
+    if (v === null || v === undefined) return '';
+    return String(v).trim().toLowerCase();
+};
+
+// =====================================================
+// 🔥 MAP KEYS
+// =====================================================
+function mapKeys(obj, mapping) {
+    const res = {};
+    for (let key in obj) {
+        const mapped = mapping[key] || key;
+        res[mapped] = obj[key];
     }
-    return toReturn;
+    return res;
 }
 
-export const compareJsonFiles = () => {
-    console.log(`🔍 Starting JSON comparison process...`);
-    
-    if (!fs.existsSync(compareDir)) {
-        fs.mkdirSync(compareDir, { recursive: true });
-    }
+// =====================================================
+// 🔥 GENERAL NORMALIZATION
+// =====================================================
+function normalizeGeneralInput(data) {
+    return mapKeys(data.GENERAL?.[0] || {}, generalMapping);
+}
 
-    if (!fs.existsSync(inputDir)) {
-        console.error(`❌ Input directory ${inputDir} does not exist.`);
-        return;
-    }
+function normalizeGeneralOutput(data) {
+    return data.master?.sbModel?.[0] || {};
+}
 
-    const inputFiles = fs.readdirSync(inputDir).filter(f => f.endsWith('.json'));
+// =====================================================
+// 🔥 ORDER NORMALIZATION
+// =====================================================
+function normalizeOrdersInput(data) {
+    const result = {};
+    (data.ORDERS || []).forEach(order => {
+        const key = `INV_${order.Inv_Sr_No}`;
+        result[key] = mapKeys(order, orderMapping);
+    });
+    return result;
+}
 
-    if (inputFiles.length === 0) {
-        console.log(`⚠️ No JSON files found in ${inputDir}.`);
-        return;
-    }
+function normalizeOrdersOutput(data) {
+    const result = {};
+    (data.master?.invoiceModel || []).forEach(order => {
+        const key = `INV_${order.invoiceSerialNumber}`;
+        result[key] = order;
+    });
+    return result;
+}
 
-    for (const file of inputFiles) {
-        console.log(`\n📄 Comparing file: ${file}`);
-        
-        const inputFilePath = path.join(inputDir, file);
-        const outputFilePath = path.join(outputDir, `x${file}`);
+// =====================================================
+// 🔥 ITEM NORMALIZATION
+// =====================================================
+function normalizeItemsInput(data) {
+    const result = {};
+    (data.ITEMS || []).forEach(item => {
+        const key = `INV_${item.Inv_Sr_No}_ITEM_${item.Item_Sr_No}`;
+        result[key] = mapKeys(item, itemMapping);
+    });
+    return result;
+}
 
-        if (!fs.existsSync(outputFilePath)) {
-            console.log(`⚠️ Output file missing: ${outputFilePath} (Has the export process run?)`);
-            continue;
-        }
+function normalizeItemsOutput(data) {
+    const result = {};
+    (data.master?.itemModel || []).forEach(item => {
+        const key = `INV_${item.invoiceSerialNumber}_ITEM_${item.itemSerialNumberInvoice}`;
+        result[key] = item;
+    });
+    return result;
+}
 
-        let inputData, outputData;
-        try {
-            inputData = JSON.parse(fs.readFileSync(inputFilePath, 'utf8'));
-            outputData = JSON.parse(fs.readFileSync(outputFilePath, 'utf8'));
-        } catch (e) {
-            console.error(`❌ Error parsing JSON for ${file}:`, e.message);
-            continue;
-        }
+// =====================================================
+// 🔥 GENERIC COMPARE FUNCTION
+// =====================================================
+function compareSection(sectionName, input, output) {
+    const diffs = [];
+    const matches = [];
 
-        // Flatten both JSON objects
-        const flatInput = flattenObject(inputData);
-        const flatOutput = flattenObject(outputData);
+    const allGroups = new Set([
+        ...Object.keys(input),
+        ...Object.keys(output)
+    ]);
 
-        const allKeys = new Set([...Object.keys(flatInput), ...Object.keys(flatOutput)]);
-        
-        const differences = [];
+    for (let group of allGroups) {
+        const inObj = input[group] || {};
+        const outObj = output[group] || {};
 
-        for (const key of allKeys) {
-            const inVal = flatInput[key];
-            const outVal = flatOutput[key];
+        const allKeys = new Set([
+            ...Object.keys(inObj),
+            ...Object.keys(outObj)
+        ]);
 
-            // Compare values. If one is missing or deeply different, report it.
-            if (inVal !== outVal) {
-                differences.push({
-                    'JSON Path Keys': key,
-                    'Input Value (input_json)': inVal !== undefined ? String(inVal) : 'MISSING IN INPUT',
-                    'Output Value (Output_json)': outVal !== undefined ? String(outVal) : 'MISSING IN OUTPUT'
+        for (let key of allKeys) {
+            const valA = inObj[key];
+            const valB = outObj[key];
+
+            if (normalize(valA) === normalize(valB)) {
+                matches.push({
+                    Section: sectionName,
+                    Group: group,
+                    Field: key,
+                    Input: valA || '',
+                    Output: valB || '',
+                    Status: 'MATCH'
+                });
+            } else {
+                diffs.push({
+                    Section: sectionName,
+                    Group: group,
+                    Field: key,
+                    Input: valA ?? '⚠️ MISSING',
+                    Output: valB ?? '⚠️ MISSING',
+                    Status:
+                        valA === undefined
+                            ? 'Missing in Input'
+                            : valB === undefined
+                            ? 'Missing in Output'
+                            : 'Mismatch'
                 });
             }
         }
-
-        if (differences.length === 0) {
-            console.log(`✅ No differences found. Both files are structurally identical.`);
-            differences.push({
-                'JSON Path Keys': 'Identical',
-                'Input Value (input_json)': 'Match',
-                'Output Value (Output_json)': 'Match'
-            });
-        }
-
-        // Generate Excel Worksheet
-        const worksheet = xlsx.utils.json_to_sheet(differences);
-        
-        // Auto-size columns to be easily readable
-        const wscols = [
-            { wch: 50 }, // Path
-            { wch: 35 }, // Input
-            { wch: 35 }  // Output
-        ];
-        worksheet['!cols'] = wscols;
-
-        const workbook = xlsx.utils.book_new();
-        xlsx.utils.book_append_sheet(workbook, worksheet, 'Differences');
-
-        const excelName = `Diff_Comparison_${file.replace('.json', '.xlsx')}`;
-        const excelPath = path.join(compareDir, excelName);
-
-        xlsx.writeFile(workbook, excelPath);
-        console.log(`📊 Differences successfully dumped to Excel: ${excelPath}`);
     }
-    
-    console.log(`\n🎉 COMPARISON COMPLETE`);
-};
 
-// Execute if run directly via `node 04_comparision.js`
-compareJsonFiles();
+    return { diffs, matches };
+}
+
+// =====================================================
+// 📊 GENERATE EXCEL
+// =====================================================
+function generateExcel(allDiffs, summary) {
+    const wb = xlsx.utils.book_new();
+
+    // Create folder if missing
+    const dir = path.dirname(reportPath);
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+    }
+
+    // -------- SUMMARY --------
+    const summarySheet = xlsx.utils.json_to_sheet([
+        { Metric: 'Total Differences', Value: allDiffs.length },
+        { Metric: 'Match %', Value: summary.matchPercentage + '%' }
+    ]);
+
+    xlsx.utils.book_append_sheet(wb, summarySheet, 'Summary');
+
+    // -------- DIFFERENCES --------
+    const diffSheet = xlsx.utils.json_to_sheet(allDiffs);
+    xlsx.utils.book_append_sheet(wb, diffSheet, 'Differences');
+
+    xlsx.writeFile(wb, reportPath);
+
+    console.log(`\n📊 Excel Generated: ${reportPath}`);
+}
+
+// =====================================================
+// 🚀 MAIN
+// =====================================================
+function main() {
+    const inputJson = JSON.parse(fs.readFileSync(inputPath));
+    const outputJson = JSON.parse(fs.readFileSync(outputPath));
+
+    // Normalize all sections
+    const genIn = normalizeGeneralInput(inputJson);
+    const genOut = normalizeGeneralOutput(outputJson);
+
+    const ordIn = normalizeOrdersInput(inputJson);
+    const ordOut = normalizeOrdersOutput(outputJson);
+
+    const itemIn = normalizeItemsInput(inputJson);
+    const itemOut = normalizeItemsOutput(outputJson);
+
+    // Compare
+    const genRes = compareSection('GENERAL', { GENERAL: genIn }, { GENERAL: genOut });
+    const ordRes = compareSection('ORDERS', ordIn, ordOut);
+    const itemRes = compareSection('ITEMS', itemIn, itemOut);
+
+    const allDiffs = [
+        ...genRes.diffs,
+        ...ordRes.diffs,
+        ...itemRes.diffs
+    ];
+
+    const totalFields =
+        genRes.matches.length +
+        ordRes.matches.length +
+        itemRes.matches.length +
+        allDiffs.length;
+
+    const matchPercentage = (
+        ((totalFields - allDiffs.length) / totalFields) *
+        100
+    ).toFixed(2);
+
+    generateExcel(allDiffs, { matchPercentage });
+
+    console.log('\n✅ DONE');
+}
+
+main();

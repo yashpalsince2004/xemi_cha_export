@@ -137,6 +137,27 @@ import { convertExcelToJson } from './02_read_xl.js';
         console.log(`⚠️ Problem during Upload step: ${err.message}`);
       }
 
+      // Handle the optional Exchange Rates SweetAlert popup that might appear after upload
+      try {
+        const swalPopup = page.locator('.swal2-popup');
+        // We wait up to 5 seconds to see if it's on the screen
+        await swalPopup.waitFor({ state: 'visible', timeout: 5000 });
+        
+        const swalTitle = await swalPopup.locator('.swal2-title').textContent();
+        if (swalTitle && swalTitle.includes('Exchange rates have recently changed')) {
+          console.log('Exchange rates popup detected! Clicking Yes...');
+          await swalPopup.locator('.swal2-confirm').click();
+          await page.waitForTimeout(2000); // Wait for modal to disappear
+        } else {
+          console.log('Different SweetAlert detected: ' + swalTitle);
+          // Optional: we can dismiss it if there's a confirm button, to avoid blocking the continue button
+          await swalPopup.locator('.swal2-confirm').click();
+          await page.waitForTimeout(1000);
+        }
+      } catch (e) {
+        // No SweetAlert popup appeared
+      }
+
       // Click the first Continue button on the Setup page to initiate the redirect to the next step
       await safeClick(page.locator('button.continue-btn').first());
       console.log('Clicked first Continue button, waiting for redirect to Shipment Details...');
